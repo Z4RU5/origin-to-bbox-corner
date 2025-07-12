@@ -10,14 +10,14 @@
 
 bl_info = {
     "name": "Origin to Bounding Box Corner",
-    "author": "berkan + gemini",
-    "version": (2, 0, 0),
+    "author": "berkan + Gemini + ChatGPT",
+    "version": (2, 2, 0),
     "blender": (3, 0, 0),
     "location": "3D Viewport > Sidebar (N-Panel) > Tool Tab",
-    "description": "Optimized addon to set an object's origin to a bounding box corner.",
+    "description": "Corrected object positioning logic to match UI.",
     "warning": "",
-    "doc_url": "https://github.com/google/generative-ai-docs", # Placeholder
-    "tracker_url": "https://github.com/google/generative-ai-docs/issues", # Placeholder
+    "doc_url": "https://github.com/Z4RU5/origin-to-bbox-corner",
+    "tracker_url": "https://github.com/Z4RU5/origin-to-bbox-corner/issues",
     "support": "COMMUNITY",
     "category": "Object",
 }
@@ -29,18 +29,6 @@ from mathutils import Vector
 
 class BBOX_Origin_Properties(bpy.types.PropertyGroup):
     """Stores the state of the axis toggles for the addon."""
-    axis_states: bpy.props.EnumProperty(
-        name="Axis States",
-        items=[
-            ('POSITIVE_X', "+X", ""), ('NEGATIVE_X', "-X", ""),
-            ('POSITIVE_Y', "+Y", ""), ('NEGATIVE_Y', "-Y", ""),
-            ('POSITIVE_Z', "+Z", ""), ('NEGATIVE_Z', "-Z", "")
-        ],
-        options={'HIDDEN'},
-        # Using a single property with flags is not ideal for this,
-        # so we'll stick to three distinct properties for clarity and ease of use.
-    )
-
     x_axis_side: bpy.props.EnumProperty(
         name="X Axis", description="Which side of the X-axis to use",
         items=[('POSITIVE', "+X", ""), ('NEGATIVE', "-X", "")], default='POSITIVE'
@@ -88,33 +76,32 @@ class BBOX_OT_set_origin_to_corner(bpy.types.Operator):
     def execute(self, context):
         props = context.scene.origin_to_bbox_corner_props
         
-        # Preserve the user's context (selection and cursor location)
-        # to ensure the operator is non-destructive to the workflow.
         saved_cursor_location = context.scene.cursor.location.copy()
         original_active = context.view_layer.objects.active
         selected_objs = context.selected_objects[:]
 
         for obj in selected_objs:
+            bpy.ops.object.select_all(action='DESELECT')
+            obj.select_set(True)
             context.view_layer.objects.active = obj
             
-            # Get bounding box corners in world space to handle object transforms.
             world_bbox = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
 
-            # Determine the target corner from UI properties.
+            # Inverted logic to ensure object position matches UI.
+            # If UI is `+X`, we set the origin to the MINIMUM corner, so that when
+            # the origin moves to (0,0,0), the object's geometry is in positive space.
             target_corner = Vector((
-                max(c.x for c in world_bbox) if props.x_axis_side == 'NEGATIVE' else min(c.x for c in world_bbox),
-                max(c.y for c in world_bbox) if props.y_axis_side == 'NEGATIVE' else min(c.y for c in world_bbox),
-                max(c.z for c in world_bbox) if props.z_axis_side == 'NEGATIVE' else min(c.z for c in world_bbox),
+                min(c.x for c in world_bbox) if props.x_axis_side == 'POSITIVE' else max(c.x for c in world_bbox),
+                min(c.y for c in world_bbox) if props.y_axis_side == 'POSITIVE' else max(c.y for c in world_bbox),
+                min(c.z for c in world_bbox) if props.z_axis_side == 'POSITIVE' else max(c.z for c in world_bbox),
             ))
 
-            # Using bpy.ops.object.origin_set is the most robust method.
-            # It correctly handles all object types, modifiers, and dependencies,
-            # which is complex to replicate manually in Python.
             context.scene.cursor.location = target_corner
             bpy.ops.object.origin_set(type='ORIGIN_CURSOR', center='MEDIAN')
             bpy.ops.object.location_clear(clear_delta=False)
 
-        # Restore the original context.
+        # Restore the original selection and active object.
+        bpy.ops.object.select_all(action='DESELECT')
         for obj in selected_objs:
             obj.select_set(True)
         context.view_layer.objects.active = original_active
@@ -140,7 +127,6 @@ class BBOX_PT_origin_panel(bpy.types.Panel):
         
         row = layout.row(align=True)
 
-        # A loop makes the UI code more concise and easier to maintain.
         for axis in ('X', 'Y', 'Z'):
             prop_name = f"{axis.lower()}_axis_side"
             text = f"+{axis}" if getattr(props, prop_name) == 'POSITIVE' else f"-{axis}"
