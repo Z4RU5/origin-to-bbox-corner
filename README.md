@@ -13,6 +13,7 @@ Ideal for modular, game-ready assets and anyone who wants full control over obje
 - Moves object origin and clears location (Alt+G)
 - Works with single or multiple selected objects
 - Easy panel under **3D Viewport > Sidebar (N-panel) > Tool Tab**
+- ![Addon screenshot](./screenshot.png)
 
 ---
 
